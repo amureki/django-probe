@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
+from collections.abc import Callable
 from datetime import timedelta
+from typing import TypedDict
 
 from django.contrib import messages
 from django.contrib.admin.views.decorators import staff_member_required
@@ -13,10 +15,16 @@ from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, OuterRef, Subquery
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    JsonResponse,
+    StreamingHttpResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.cache import cache_control
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -36,16 +44,51 @@ from ingest.forms import (
 from ingest.models import (
     CLI_AUTH_REQUEST_TTL,
     CLI_CREDENTIAL_TTL,
+    SIZE_BUCKETS,
     CliCredential,
     Organization,
     OrganizationMembership,
     Project,
+    SizeBucket,
     Submission,
     hash_cli_token,
+)
+from ingest.stats import (
+    FILTER_FIELDS,
+    Cohort,
+    Filters,
+    KeySource,
+    KeysSummary,
+    Overview,
+    StatsFilterForm,
+    filter_keys,
+    query_string,
 )
 from ingest.validation import MAX_BODY_BYTES, ValidationError, validate_payload
 
 RECENT_SUBMISSION_WINDOW = timedelta(days=35)
+
+
+def stats_cache_control(
+    view: Callable[..., HttpResponse],
+) -> Callable[..., HttpResponse]:
+    """Let the CDN serve one copy of the view's response to every visitor.
+
+    Stats only change as submissions arrive, so the CDN can hold a page for a day.
+    Browsers get a shorter lifetime so a reload picks up the CDN's copy. The view
+    is marked ``publicly_cached`` so the tests can find it.
+    """
+    cached = cache_control(public=True, max_age=300, s_maxage=86400)(view)
+    cached.publicly_cached = True
+    return cached
+
+
+class StatsContext(TypedDict):
+    summary: Overview | KeysSummary
+    filters: Filters
+    chosen_keys: list[str]
+    size_buckets: tuple[SizeBucket, ...]
+    query: str
 
 
 def _error(message: str, status: int) -> JsonResponse:
@@ -327,6 +370,96 @@ def home(request) -> HttpResponse:
             .count(),
         },
     )
+
+
+def _clean_stats_query(request) -> Filters | None:
+    """Validate the stats query string, returning its filters or None if invalid.
+
+    Only valid values of known filters are accepted, and only ``key`` may repeat,
+    so the CDN caches a bounded set of URLs instead of one per arbitrary query
+    string.
+    """
+    for name, values in request.GET.lists():
+        if name not in FILTER_FIELDS or (len(values) > 1 and name != "key"):
+            return None
+    form = StatsFilterForm(request.GET)
+    if not form.is_valid():
+        return None
+    return form.filters()
+
+
+def _canonical_stats_redirect(request, filters: Filters) -> HttpResponse | None:
+    """Redirect to the canonical URL for ``filters`` unless the request is already it.
+
+    Equivalent query strings then share one cached page.
+    """
+    canonical = query_string(filters)
+    if request.META.get("QUERY_STRING", "") == canonical:
+        return None
+    return redirect(f"{request.path}?{canonical}" if canonical else request.path)
+
+
+def _stats_context(filters: Filters, summary: Overview | KeysSummary) -> StatsContext:
+    return {
+        "summary": summary,
+        "filters": filters,
+        "chosen_keys": filter_keys(filters),
+        "size_buckets": SIZE_BUCKETS,
+        "query": query_string(filters),
+    }
+
+
+@require_GET
+@stats_cache_control
+def stats(request) -> HttpResponse:
+    filters = _clean_stats_query(request)
+    if filters is None:
+        raise Http404("Unknown stats filter")
+    if response := _canonical_stats_redirect(request, filters):
+        return response
+    return render(
+        request, "stats.html", _stats_context(filters, Cohort(filters).overview())
+    )
+
+
+@require_GET
+@stats_cache_control
+def stats_keys(request, source: KeySource) -> HttpResponse:
+    filters = _clean_stats_query(request)
+    if filters is None:
+        raise Http404("Unknown stats filter")
+    if response := _canonical_stats_redirect(request, filters):
+        return response
+    return render(
+        request,
+        "stats_keys.html",
+        {
+            **_stats_context(filters, Cohort(filters).keys(source)),
+            "source": source,
+        },
+    )
+
+
+@require_GET
+@stats_cache_control
+def api_stats(request) -> HttpResponse:
+    filters = _clean_stats_query(request)
+    if filters is None:
+        return _error("unknown stats filter", 404)
+    if response := _canonical_stats_redirect(request, filters):
+        return response
+    return JsonResponse(Cohort(filters).overview())
+
+
+@require_GET
+@stats_cache_control
+def api_stats_keys(request) -> HttpResponse:
+    filters = _clean_stats_query(request)
+    if filters is None:
+        return _error("unknown stats filter", 404)
+    if response := _canonical_stats_redirect(request, filters):
+        return response
+    return JsonResponse(Cohort(filters).keys())
 
 
 @staff_member_required

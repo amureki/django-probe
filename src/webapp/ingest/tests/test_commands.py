@@ -7,8 +7,10 @@ from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
 
-from ingest.management.commands.seed_data import SETTING_NAMES, USAGE_NAMES
+from django_probe.settings import DJANGO_SETTING_NAMES_BY_VERSION
+from ingest.management.commands.seed_data import USAGE_NAMES
 from ingest.models import CliCredential, Submission
+from ingest.stats import POPULAR_KEYS_LIMIT, Cohort, KeySource
 from ingest.tests.factories import (
     CliCredentialFactory,
     OrganizationFactory,
@@ -135,16 +137,22 @@ class PurgeCliCredentialsTests(TestCase):
 
 class SeedDataTests(TestCase):
     def test_seeds_settings_and_usage(self):
-        """Names come from the installed Django."""
+        """One run gives the stats pages settings and APIs to show."""
         call_command("seed_data", stdout=StringIO())
 
         submissions = Submission.objects.all()
         self.assertTrue(submissions.exists())
-        settings = {
-            name for submission in submissions for name in submission.django_settings
-        }
-        usage = {name for submission in submissions for name in submission.usage}
-        self.assertTrue(settings)
-        self.assertTrue(usage)
-        self.assertLessEqual(settings, set(SETTING_NAMES))
-        self.assertLessEqual(usage, set(USAGE_NAMES))
+        for submission in submissions:
+            major, minor, *_ = submission.django_version.split(".")
+            self.assertLessEqual(
+                set(submission.django_settings),
+                DJANGO_SETTING_NAMES_BY_VERSION[f"{major}.{minor}"],
+            )
+            self.assertLessEqual(set(submission.usage), set(USAGE_NAMES))
+            self.assertEqual(
+                submission.dependencies["django"], submission.django_version
+            )
+
+        popular = Cohort({}).overview()["popular"]
+        self.assertEqual(len(popular[KeySource.SETTING]), POPULAR_KEYS_LIMIT)
+        self.assertEqual(len(popular[KeySource.USAGE]), POPULAR_KEYS_LIMIT)

@@ -1,0 +1,20 @@
+{% load ingest_extras %}
+<div class="table-wrap">
+  <table class="table">
+    <thead><tr><th>Name</th><th>Projects</th><th>Share</th></tr></thead>
+    <tbody>
+      {% for row in keys %}
+      <tr>
+        <td>{% if row.projects is not None and row.key not in chosen_keys %}<a href="{% url 'stats' %}{% stats_query filters add_key=row.key %}"><code>{{ row.key }}</code></a>{% else %}<code>{{ row.key }}</code>{% endif %}</td>
+        {% if row.projects is None %}
+        <td colspan="2" class="table__meta">Too few projects</td>
+        {% else %}
+        {% include "includes/stats_count_cells.html" with projects=row.projects %}
+        {% endif %}
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" class="table__meta">{{ empty_message|default:"Nothing to show." }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

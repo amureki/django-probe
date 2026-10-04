@@ -4,10 +4,26 @@ from django.contrib import admin
 from django.urls import include, path
 
 from ingest import views
+from ingest.stats import KeySource
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("stats/", views.stats, name="stats"),
+    path(
+        "stats/settings/",
+        views.stats_keys,
+        {"source": KeySource.SETTING},
+        name="stats-settings",
+    ),
+    path(
+        "stats/apis/",
+        views.stats_keys,
+        {"source": KeySource.USAGE},
+        name="stats-apis",
+    ),
     path("api/submissions/", views.submissions, name="submissions"),
+    path("api/stats/", views.api_stats, name="api-stats"),
+    path("api/stats/keys/", views.api_stats_keys, name="api-stats-keys"),
     path("api/cli/auth/", views.cli_auth_start, name="cli-auth-start"),
     path(
         "api/cli/auth/<str:code>/poll/",

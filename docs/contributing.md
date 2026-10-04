@@ -85,6 +85,9 @@ send default personally identifiable information and does not capture request bo
 
 Cloudflare's SSL mode must be Full or Full (strict), not Flexible.
 
+A Cache Rule must make the stats pages eligible for caching. Add rules for
+`/stats/*` and `/api/stats/*` that respects the origin's `Cache-Control`.
+
 **Rate limiting must cover every unauthenticated endpoint.** Note that this is wider
 than the endpoints that create rows:
 
@@ -94,6 +97,15 @@ than the endpoints that create rows:
 | `POST /api/cli/auth/` | Unauthenticated row creation, once per request. |
 | `GET /api/cli/auth/<code>/poll/` | Issues the CLI credential. It is a **GET**, so a rule scoped to POSTs or to "create" endpoints will miss it. |
 | `/accounts/login/`, `/accounts/signup/` | allauth; otherwise unbounded credential stuffing. |
+
+### New Django and Python releases
+
+When Django or Python ships a new feature release:
+
+- Update `DJANGO_VERSIONS` or `PYTHON_VERSIONS` in `src/webapp/ingest/stats.py`.
+- For Django, add its new setting names to `DJANGO_SETTING_NAMES_BY_VERSION` in
+  `src/django_probe/settings.py`.
+- Update `tox.ini` matrix and the `pyproject.toml` classifiers.
 
 ### Scheduled maintenance
 

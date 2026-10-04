@@ -8,7 +8,6 @@ from types import ModuleType
 from typing import Any
 
 from django import http, shortcuts, urls
-from django.conf import global_settings
 from django.contrib.auth import decorators as auth_decorators
 from django.core.management.base import BaseCommand, CommandError
 from django.db import models, transaction
@@ -16,6 +15,7 @@ from django.utils import timezone
 from django.views import generic
 
 from config import environment
+from django_probe.settings import DJANGO_SETTING_NAMES, DJANGO_SETTING_NAMES_BY_VERSION
 from ingest.models import User
 from ingest.tests.factories import (
     OrganizationFactory,
@@ -25,10 +25,11 @@ from ingest.tests.factories import (
     UserFactory,
 )
 
-ORGANIZATIONS = 3
+# Enough projects for names to pass the public stats minimum.
+ORGANIZATIONS = 4
 MEMBERS_PER_ORGANIZATION = 2
-PROJECTS_PER_ORGANIZATION = 2
-SUBMISSIONS_PER_PROJECT = 5
+PROJECTS_PER_ORGANIZATION = 10
+SUBMISSIONS_PER_PROJECT = 3
 
 PYTHON_VERSIONS = ["3.10.14", "3.11.9", "3.12.6", "3.13.0"]
 DJANGO_VERSIONS = ["4.2.16", "5.0.9", "5.1.2"]
@@ -52,7 +53,26 @@ DEPENDENCY_NAMES = [
 ]
 
 
-SETTING_NAMES = sorted(name for name in dir(global_settings) if name.isupper())
+SETTING_NAMES = sorted(DJANGO_SETTING_NAMES)
+STARTPROJECT_SETTINGS = frozenset(
+    {
+        "ALLOWED_HOSTS",
+        "AUTH_PASSWORD_VALIDATORS",
+        "DATABASES",
+        "DEBUG",
+        "DEFAULT_AUTO_FIELD",
+        "INSTALLED_APPS",
+        "LANGUAGE_CODE",
+        "MIDDLEWARE",
+        "SECRET_KEY",
+        "STATIC_URL",
+        "TEMPLATES",
+        "TIME_ZONE",
+        "USE_I18N",
+        "USE_TZ",
+        "WSGI_APPLICATION",
+    }
+)
 USAGE_MODULES = (
     auth_decorators,
     generic,
@@ -87,9 +107,39 @@ USAGE_NAMES = sorted(
 )
 
 
-def _adoption_rates(names: list[str]) -> dict[str, float]:
-    """The share of projects using each name, skewed so most names are rare."""
-    return {name: random.betavariate(0.5, 1.5) for name in names}
+COMMON_USAGE = frozenset(
+    {
+        "django.db.models.CharField",
+        "django.db.models.ForeignKey",
+        "django.db.models.Model",
+        "django.http.HttpResponse",
+        "django.shortcuts.get_object_or_404",
+        "django.shortcuts.redirect",
+        "django.shortcuts.render",
+        "django.urls.include",
+        "django.urls.path",
+        "django.urls.reverse",
+    }
+)
+COMMON_RATE = 0.95
+
+
+def _adoption_rates(names: list[str], common: frozenset[str]) -> dict[str, float]:
+    """The share of projects using each name.
+
+    Nearly every project uses the ``common`` names. The rest are skewed so most are
+    rare, and seeded by name so repeated runs agree on which are popular.
+    """
+    return {
+        name: COMMON_RATE
+        if name in common
+        else random.Random(name).betavariate(0.5, 1.5)
+        for name in names
+    }
+
+
+SETTING_RATES = _adoption_rates(SETTING_NAMES, STARTPROJECT_SETTINGS)
+USAGE_RATES = _adoption_rates(USAGE_NAMES, COMMON_USAGE)
 
 
 def _adopted(rates: dict[str, float], counts: tuple[int, int]) -> dict[str, int]:
@@ -97,6 +147,17 @@ def _adopted(rates: dict[str, float], counts: tuple[int, int]) -> dict[str, int]
         name: random.randint(*counts)
         for name, rate in rates.items()
         if random.random() < rate
+    }
+
+
+def _random_settings(django_version: str) -> dict[str, int]:
+    """Settings that exist in ``django_version``."""
+    major, minor, *_ = django_version.split(".")
+    known = DJANGO_SETTING_NAMES_BY_VERSION[f"{major}.{minor}"]
+    return {
+        name: count
+        for name, count in _adopted(SETTING_RATES, (1, 1)).items()
+        if name in known
     }
 
 
@@ -115,8 +176,8 @@ def _dummy_username(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _random_dependencies() -> dict[str, str]:
-    dependencies = {"django": random.choice(DJANGO_VERSIONS)}
+def _random_dependencies(django_version: str) -> dict[str, str]:
+    dependencies = {"django": django_version}
     for name in random.sample(DEPENDENCY_NAMES, k=2):
         dependencies[name] = (
             f"{random.randint(1, 9)}.{random.randint(0, 9)}.{random.randint(0, 9)}"
@@ -150,8 +211,6 @@ class Command(BaseCommand):
 
         total_projects = 0
         total_submissions = 0
-        setting_rates = _adoption_rates(SETTING_NAMES)
-        usage_rates = _adoption_rates(USAGE_NAMES)
 
         for index in range(ORGANIZATIONS):
             owner = (
@@ -169,18 +228,19 @@ class Command(BaseCommand):
                 project = ProjectFactory(organization=organization)
                 total_projects += 1
                 for _ in range(SUBMISSIONS_PER_PROJECT):
+                    django_version = random.choice(DJANGO_VERSIONS)
                     SubmissionFactory(
                         project=project,
                         client_version=random.choice(CLIENT_VERSIONS),
                         python_version=random.choice(PYTHON_VERSIONS),
-                        django_version=random.choice(DJANGO_VERSIONS),
+                        django_version=django_version,
                         files_scanned=random.randint(5, 500),
                         patterns=_random_patterns(),
-                        dependencies=_random_dependencies(),
-                        django_settings=_adopted(setting_rates, (1, 1)),
+                        dependencies=_random_dependencies(django_version),
+                        django_settings=_random_settings(django_version),
                         django_settings_scanned=True,
                         usage_packages=["django"],
-                        usage=_adopted(usage_rates, (1, 40)),
+                        usage=_adopted(USAGE_RATES, (1, 40)),
                     )
                     total_submissions += 1
 

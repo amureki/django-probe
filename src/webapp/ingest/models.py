@@ -3,11 +3,14 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Self
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import IntegrityError, models, transaction
+from django.db.models import Case, CharField, Count, F, Func, Q, Value, When
 from django.db.models.functions import Lower
 from django.utils import timezone
 from django.utils.text import slugify
@@ -311,6 +314,90 @@ class CliCredential(models.Model):
         return self.label or self.code[:8]
 
 
+@dataclass(frozen=True)
+class SizeBucket:
+    value: str
+    label: str
+    lower: int
+    upper: int | None
+
+    @property
+    def condition(self) -> Q:
+        condition = Q(files_scanned__gte=self.lower)
+        if self.upper is not None:
+            condition &= Q(files_scanned__lt=self.upper)
+        return condition
+
+
+# Provisional groupings of ``files_scanned``. Expect these to change as the data
+# shows where the meaningful boundaries are.
+SIZE_BUCKETS = (
+    SizeBucket("small", "Small (under 50 files)", 0, 50),
+    SizeBucket("medium", "Medium (50-249 files)", 50, 250),
+    SizeBucket("large", "Large (250-999 files)", 250, 1000),
+    SizeBucket("very-large", "Very large (1000+ files)", 1000, None),
+)
+
+
+class MinorVersion(Func):
+    """The leading ``major.minor`` of a version field, or NULL if it has none."""
+
+    function = "substring"
+    output_field = CharField()
+
+    def __init__(self, field: str) -> None:
+        super().__init__(F(field), Value(r"^\d+\.\d+"))
+
+
+class SubmissionQuerySet(models.QuerySet["Submission"]):
+    def latest_per_project(self) -> Self:
+        """Each project's most recent submission.
+
+        Anonymous submissions are left out because there is no way to tell whether
+        two of them came from the same project.
+        """
+        latest_ids = (
+            self.filter(project__isnull=False)
+            .order_by("project_id", "-created_at")
+            .distinct("project_id")
+            .values("id")
+        )
+        return self.filter(id__in=latest_ids)
+
+    def with_minor_versions(self) -> Self:
+        """Annotate ``django_minor`` and ``python_minor``."""
+        return self.annotate(
+            django_minor=MinorVersion("django_version"),
+            python_minor=MinorVersion("python_version"),
+        )
+
+    def with_size(self) -> Self:
+        """Annotate ``size`` with the value of the matching ``SIZE_BUCKETS`` entry."""
+        return self.annotate(
+            size=Case(
+                *(
+                    When(bucket.condition, then=Value(bucket.value))
+                    for bucket in SIZE_BUCKETS
+                ),
+                output_field=CharField(),
+            )
+        )
+
+    def count_by(self, field: str) -> dict[str | None, int]:
+        """The number of submissions for each value of ``field``."""
+        return dict(self.values_list(field).annotate(Count("id")).order_by())
+
+    def count_by_versions(self) -> dict[tuple[str | None, str | None], int]:
+        """The number of submissions for each pair of Django and Python version."""
+        rows = (
+            self.with_minor_versions()
+            .values_list("django_minor", "python_minor")
+            .annotate(Count("id"))
+            .order_by()
+        )
+        return {(django, python): count for django, python, count in rows}
+
+
 class Submission(models.Model):
     """One submission from one client run.
 
@@ -350,6 +437,8 @@ class Submission(models.Model):
     dependencies_source = models.CharField(max_length=128, blank=True)
     django_settings = models.JSONField(default=dict)
     django_settings_scanned = models.BooleanField(default=False)
+
+    objects = SubmissionQuerySet.as_manager()
 
     class Meta:
         ordering = ["-created_at"]
