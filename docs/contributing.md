@@ -81,19 +81,9 @@ resource:
 Sentry never initializes without `SENTRY_DSN`. When enabled, the integration does not
 send default personally identifiable information and does not capture request bodies.
 
-### What the edge has to provide
+### Cloudflare set up
 
-Things the application depends on and cannot enforce for itself. All of them are
-Cloudflare and host configuration, so they need re-checking after any infrastructure
-change rather than being assumed from the code.
-
-**Cloudflare's SSL mode must be Full or Full (strict), not Flexible.** In Flexible
-mode Cloudflare speaks plain HTTP to the origin, the proxy in front of Django reports
-`X-Forwarded-Proto: http`, and `SECURE_SSL_REDIRECT` answers every request with a
-redirect to HTTPS that comes straight back as HTTP — an infinite loop that takes the
-site down. The same arrangement is why `DJANGO_PROBE_CSRF_TRUSTED_ORIGINS` must list
-origins with their scheme.
-
+Cloudflare's SSL mode must be Full or Full (strict), not Flexible.
 
 **Rate limiting must cover every unauthenticated endpoint.** Note that this is wider
 than the endpoints that create rows:
