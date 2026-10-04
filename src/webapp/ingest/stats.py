@@ -357,10 +357,11 @@ class Cohort:
             ]
 
     def _all_keys(self, source: KeySource | None = None) -> list[KeyCount]:
-        """Every setting and usage key in the cohort, sorted by source, then name.
+        """Every setting and usage key in the cohort.
 
-        Every setting name the client recognizes is listed, including those no
-        project defines.
+        Sorted by source, then counted keys ahead of those with too few projects,
+        then name. Every setting name the client recognizes is listed, including
+        those no project defines.
         """
         keys = self._key_counts(source)
         if source in (None, KeySource.SETTING):
@@ -370,7 +371,13 @@ class Cohort:
                 for name in DJANGO_SETTING_NAMES - used
             ]
         return sorted(
-            keys, key=lambda row: (row["source"], row["key"].lower(), row["key"])
+            keys,
+            key=lambda row: (
+                row["source"],
+                row["projects"] is None,
+                row["key"].lower(),
+                row["key"],
+            ),
         )
 
     def _popular_keys(self) -> dict[KeySource, list[KeyCount]]:

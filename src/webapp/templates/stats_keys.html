@@ -2,6 +2,15 @@
 {% load ingest_extras %}
 {% block title %}{% if source == "setting" %}Settings{% else %}Django APIs{% endif %} | Stats | Django Probe{% endblock %}
 
+{% block breadcrumbs %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'stats' %}{% stats_query filters %}">Stats</a></li>
+    <li aria-current="page">{% if source == "setting" %}Settings{% else %}Django APIs{% endif %}</li>
+  </ol>
+</nav>
+{% endblock %}
+
 {% block heading %}All {% if source == "setting" %}settings{% else %}Django APIs{% endif %}{% endblock %}
 
 {% block lede %}{% if source == "setting" %}Every setting Django Probe recognizes is listed, even when no project defines it.{% endif %}{% endblock %}

@@ -216,7 +216,10 @@ class StatsTests(TestCase):
         self.assertTrue(self.get_stats("?django=6.0")["withheld"])
 
     def test_keys(self):
-        """Every name, counted only at the minimum, settings first, then alphabetical."""
+        """Every name, counted only at the minimum.
+
+        Settings come first, then counted names ahead of the rest, then alphabetical.
+        """
         keys = self.get_stats(url="api-stats-keys")["keys"]
         counts = {row["key"]: row["projects"] for row in keys}
 
@@ -235,8 +238,18 @@ class StatsTests(TestCase):
             [row["source"] for row in keys],
             sorted(row["source"] for row in keys),
         )
-        settings = [row["key"] for row in keys if row["source"] == "setting"]
-        self.assertEqual(settings, sorted(settings, key=str.lower))
+        settings = [row for row in keys if row["source"] == "setting"]
+        self.assertEqual(
+            [row["key"] for row in settings[:3]],
+            ["CACHES", "TEMPLATES", "ABSOLUTE_URL_OVERRIDES"],
+        )
+        self.assertEqual(
+            settings,
+            sorted(
+                settings,
+                key=lambda row: (row["projects"] is None, row["key"].lower()),
+            ),
+        )
         filtered = self.get_stats("?django=4.2", url="api-stats-keys")["keys"]
         self.assertIn(
             {"key": "CACHE_MIDDLEWARE_SECONDS", "source": "setting", "projects": None},
@@ -341,19 +354,29 @@ class StatsTests(TestCase):
         self.assertContains(response, 'href="/stats/?key=CACHES&amp;key=TEMPLATES"')
 
     def test_browse(self):
-        """Names below the minimum are listed without a count or a link."""
+        """Names link to the same page, narrowed to the projects using them.
+
+        Names below the minimum are listed without a count or a link, and the
+        breadcrumb leads back to the overview with the filters kept.
+        """
         response = self.client.get(f"{reverse('stats-apis')}?django=5.1")
 
         self.assertContains(response, "All Django APIs")
         self.assertContains(response, '<span class="stat">10</span>', html=True)
         self.assertContains(
-            response, 'href="/stats/?django=5.1&amp;key=django.db.models.F"'
+            response, 'href="/stats/apis/?django=5.1&amp;key=django.db.models.F"'
+        )
+        self.assertContains(
+            response, '<li><a href="/stats/?django=5.1">Stats</a></li>', html=True
+        )
+        self.assertContains(
+            response, '<form action="/stats/apis/" class="stats-search" hidden>'
         )
         self.assertNotContains(response, "TEMPLATES")
 
         response = self.client.get(reverse("stats-settings"))
 
-        self.assertContains(response, 'href="/stats/?key=TEMPLATES"')
+        self.assertContains(response, 'href="/stats/settings/?key=TEMPLATES"')
         for name in ["CACHE_MIDDLEWARE_SECONDS", "USE_TZ"]:
             self.assertContains(
                 response,

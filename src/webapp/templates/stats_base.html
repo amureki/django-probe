@@ -8,6 +8,7 @@
 {% block messages %}{% endblock %}
 
 {% block content %}
+{% block breadcrumbs %}{% endblock %}
 <header class="page-header">
   <p class="eyebrow">Community data</p>
   <h1>{% block heading %}{% endblock %}</h1>
@@ -27,7 +28,7 @@
 </header>
 
 {# Only usable with JavaScript, which reveals it; the browse pages link every name. #}
-<form action="{% url 'stats' %}" class="stats-search" hidden>
+<form action="{{ request.path }}" class="stats-search" hidden>
   {% if filters.django %}<input type="hidden" name="django" value="{{ filters.django }}">{% endif %}
   {% if filters.python %}<input type="hidden" name="python" value="{{ filters.python }}">{% endif %}
   {% if filters.size %}<input type="hidden" name="size" value="{{ filters.size }}">{% endif %}
@@ -40,7 +41,7 @@
 
 {% if filters.django or filters.python or filters.size or filters.key %}
 <div class="panel panel--subtle">
-  <p><strong>Filters</strong></p>
+  <strong>Filters</strong><br />
   <ul class="stats-filters">
     {% if filters.django %}<li>Django {{ filters.django }} <a href="{{ request.path }}{% stats_query filters django='' %}">(remove)</a></li>{% endif %}
     {% if filters.python %}<li>Python {{ filters.python }} <a href="{{ request.path }}{% stats_query filters python='' %}">(remove)</a></li>{% endif %}
