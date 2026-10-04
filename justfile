@@ -24,6 +24,16 @@ test-e2e *ARGS:
 test-all *ARGS:
     uvx tox {{ARGS}}
 
+# Regenerate the vendored vocabularies for every supported Django version
+vendor-django-vocabularies:
+    uv run --isolated --no-project --refresh-package django --with 'Django>=4.2,<4.3' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django>=5.0,<5.1' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django>=5.1,<5.2' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django>=5.2,<5.3' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django>=6.0,<6.1' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django>=6.1,<6.2' python scripts/vendor_django_vocabularies.py
+    uv run --isolated --no-project --refresh-package django --with 'Django @ git+https://github.com/django/django.git@main' python scripts/vendor_django_vocabularies.py
+
 lint:
     uv run ruff check .
     uv run ruff format --check .

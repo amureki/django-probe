@@ -1,0 +1,1 @@
+"""Vendored Django settings vocabularies."""

@@ -107,6 +107,28 @@ class ValidationTests(IngestTestCase):
         self.assertEqual(submission.usage_packages, ["django"])
         self.assertEqual(submission.usage, {"django.shortcuts.render": 2})
 
+    def test_usage_is_stored_unchanged(self):
+        response = self.post(
+            payload(
+                usage_packages=["django", "rest_framework"],
+                usage={
+                    "django.shortcuts.render": 2,
+                    "django.my_random.offensive_statement": 4,
+                    "rest_framework.views.APIView": 3,
+                },
+            )
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(
+            Submission.objects.get().usage,
+            {
+                "django.shortcuts.render": 2,
+                "django.my_random.offensive_statement": 4,
+                "rest_framework.views.APIView": 3,
+            },
+        )
+
     def test_too_many_usage_entries(self):
         self.assertRejected(
             payload(

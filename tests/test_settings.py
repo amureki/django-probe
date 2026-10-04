@@ -14,7 +14,16 @@ class DjangoSettingCatalogTests(TestCase):
         version = ".".join(str(part) for part in DJANGO_VERSION[:2])
 
         self.assertIn(version, DJANGO_SETTING_NAMES_BY_VERSION)
-        self.assertEqual(
-            frozenset(name for name in vars(global_settings) if name.isupper()),
-            DJANGO_SETTING_NAMES_BY_VERSION[version],
+        names = DJANGO_SETTING_NAMES_BY_VERSION[version]
+        self.assertLessEqual(
+            frozenset(name for name in vars(global_settings) if name.isupper()), names
+        )
+        self.assertIn("SITE_ID", names)
+        self.assertNotIn("SETTINGS_MODULE", names)
+
+    def test_site_id(self):
+        self.assertTrue(
+            all(
+                "SITE_ID" in names for names in DJANGO_SETTING_NAMES_BY_VERSION.values()
+            )
         )

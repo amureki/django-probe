@@ -27,8 +27,12 @@ class StatsTests(TestCase):
             files_scanned=12,
             # Only Django's own settings are public; others may be private.
             django_settings={"CACHES": 1, "ACME_FLAG": 1},
-            # Only django names are public; others may be private packages.
-            usage={"django.db.models.F": 4, "acme.billing.charge": 1},
+            # Only recognized Django names are public; other packages stay private.
+            usage={
+                "django.db.models.F": 4,
+                "django.my_random.offensive_statement": 1,
+                "acme.billing.charge": 1,
+            },
         )
         submit_projects(
             MINIMUM_PROJECTS,
@@ -229,6 +233,7 @@ class StatsTests(TestCase):
         self.assertIsNone(counts["USE_TZ"])
         self.assertEqual(counts["django.db.models.F"], MINIMUM_PROJECTS)
         self.assertNotIn("acme.billing.charge", counts)
+        self.assertNotIn("django.my_random.offensive_statement", counts)
         self.assertNotIn("ACME_FLAG", counts)
         self.assertEqual(
             [key for key in counts if not StatsFilterForm({"key": [key]}).is_valid()],

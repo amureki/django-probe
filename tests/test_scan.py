@@ -143,13 +143,13 @@ class ScanPathTests(TestCase):
                 for version, names in DJANGO_SETTING_NAMES_BY_VERSION.items()
             },
             {
-                "4.2": 149,
-                "5.0": 147,
-                "5.1": 145,
-                "5.2": 146,
-                "6.0": 149,
-                "6.1": 150,
-                "6.2": 150,
+                "4.2": 162,
+                "5.0": 160,
+                "5.1": 158,
+                "5.2": 159,
+                "6.0": 162,
+                "6.1": 164,
+                "6.2": 164,
             },
         )
         self.assertEqual(
@@ -178,7 +178,7 @@ class ScanPathTests(TestCase):
                 },
                 {"FORMS_URLFIELD_ASSUME_HTTPS"},
             ),
-            ("6.0", "6.1"): ({"USE_BLANK_CHOICE_DASH"}, set()),
+            ("6.0", "6.1"): ({"MAILERS", "USE_BLANK_CHOICE_DASH"}, set()),
             ("6.1", "6.2"): (set(), set()),
         }
         for (old_version, new_version), (added, removed) in changes.items():

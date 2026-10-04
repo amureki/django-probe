@@ -76,6 +76,40 @@ class PackageUsageTests(TestCase):
         self.assertNotIn("private_recalculate", " ".join(result))
         self.assertNotIn("strftime", " ".join(result))
 
+    def test_resolves_django_singletons(self):
+        result = usage(
+            """
+            from django.contrib import admin
+            from django.core.cache import cache
+            from django.db import connection, transaction
+
+            admin.site.register(Book)
+            cached = cache.get("book")
+            cache.set("book", cached)
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+            with transaction.atomic():
+                save_book()
+            transaction.on_commit(notify)
+            """
+        )
+
+        self.assertEqual(
+            result,
+            {
+                "django.contrib.admin": 1,
+                "django.contrib.admin.site.register": 1,
+                "django.core.cache.cache": 1,
+                "django.core.cache.cache.get": 1,
+                "django.core.cache.cache.set": 1,
+                "django.db.connection": 1,
+                "django.db.connection.cursor": 1,
+                "django.db.transaction": 1,
+                "django.db.transaction.atomic": 1,
+                "django.db.transaction.on_commit": 1,
+            },
+        )
+
     def test_folds_unknown_and_chained_django_settings(self):
         result = usage(
             """

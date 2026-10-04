@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from enum import StrEnum
@@ -14,6 +13,7 @@ from django import forms
 from django.db import connection
 
 from django_probe.settings import DJANGO_SETTING_NAMES
+from ingest.django_api import is_django_api_name
 from ingest.models import SIZE_BUCKETS, Submission, SubmissionQuerySet
 
 MINIMUM_PROJECTS = 10
@@ -102,7 +102,7 @@ class KeysSummary(Summary):
 
 
 class KeysField(forms.Field):
-    """Django setting names or ``django.`` usage keys, deduplicated and sorted."""
+    """Known Django setting or API names, deduplicated and sorted."""
 
     widget = forms.MultipleHiddenInput
 
@@ -111,7 +111,8 @@ class KeysField(forms.Field):
         if len(keys) > MAX_KEYS:
             raise forms.ValidationError(f"At most {MAX_KEYS} keys.")
         if not all(
-            key in DJANGO_SETTING_NAMES or re.fullmatch(_USAGE_PATTERN, key)
+            key in DJANGO_SETTING_NAMES
+            or (key.startswith("django.") and is_django_api_name(key))
             for key in keys
         ):
             raise forms.ValidationError("Invalid key.")
@@ -313,8 +314,8 @@ class Cohort:
         Stored payloads are untrusted. The only SQL interpolated here is the cohort
         query Django compiled; every value, including the filters, is a bound
         parameter. Stored keys are only ever read as data. Only names in
-        ``DJANGO_SETTING_NAMES`` and well-formed ``django.`` usage names are
-        returned, since anything else may be private to a project.
+        ``DJANGO_SETTING_NAMES`` and the vendored Django API vocabulary are
+        returned, since anything else is untrusted or may be private to a project.
         """
         cohort_sql, params = self.queryset.values(
             "django_settings", "usage"
@@ -351,10 +352,15 @@ class Cohort:
                     source,
                 ],
             )
-            return [
+            rows = [
                 {"key": key, "source": KeySource(found), "projects": projects}
                 for key, found, projects in cursor.fetchall()
             ]
+        return [
+            row
+            for row in rows
+            if row["source"] == KeySource.SETTING or is_django_api_name(row["key"])
+        ]
 
     def _all_keys(self, source: KeySource | None = None) -> list[KeyCount]:
         """Every setting and usage key in the cohort.
