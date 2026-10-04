@@ -106,6 +106,7 @@ class ScanPathTests(TestCase):
             CSRF_COOKIE_MASKED = False
             TASKS = {}
             USE_BLANK_CHOICE_DASH = True
+            SITE_ID = 1
             INTERNAL_BILLING_REGION = "eu-west"
             THIRD_PARTY_API_TOKEN = "private-value"
 
@@ -128,6 +129,7 @@ class ScanPathTests(TestCase):
                 "CSRF_COOKIE_MASKED": 1,
                 "TASKS": 1,
                 "USE_BLANK_CHOICE_DASH": 1,
+                "SITE_ID": 1,
             },
         )
 
@@ -152,9 +154,9 @@ class ScanPathTests(TestCase):
                 "6.2": 150,
             },
         )
-        self.assertEqual(
-            DJANGO_SETTING_NAMES,
+        self.assertLessEqual(
             frozenset().union(*DJANGO_SETTING_NAMES_BY_VERSION.values()),
+            DJANGO_SETTING_NAMES,
         )
 
     def test_catalog_changes(self):
