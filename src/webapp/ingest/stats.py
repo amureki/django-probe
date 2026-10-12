@@ -19,7 +19,8 @@ from ingest.models import SIZE_BUCKETS, Submission, SubmissionQuerySet
 MINIMUM_PROJECTS = 10
 POPULAR_KEYS_LIMIT = 10
 MAX_KEYS = 10
-FILTER_FIELDS = ("django", "python", "size", "key")
+# Alphabetical to match Cloudflare query string sorting
+FILTER_FIELDS = ("django", "key", "python", "size")
 
 # Older versions are grouped into ``other``, and newer ones appear as soon as a project reports them.
 DJANGO_VERSIONS = ("4.2", "5.0", "5.1", "5.2", "6.0", "6.1")

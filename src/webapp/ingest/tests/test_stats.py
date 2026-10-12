@@ -286,13 +286,17 @@ class StatsTests(TestCase):
                 )
 
     def test_canonical_redirect(self):
+        """The canonical order is alphabetical because Cloudflare sorts query strings.
+
+        Any other order would redirect to itself forever behind it.
+        """
         for url, expected in [
-            ("stats", "/stats/?django=5.1&size=small"),
-            ("api-stats", "/api/stats/?django=5.1&size=small"),
+            ("stats", "/stats/?django=5.1&key=CACHES&size=small"),
+            ("api-stats", "/api/stats/?django=5.1&key=CACHES&size=small"),
         ]:
             with self.subTest(url=url):
                 response = self.client.get(
-                    f"{reverse(url)}?size=small&python=&django=5.1"
+                    f"{reverse(url)}?size=small&python=&key=CACHES&django=5.1"
                 )
                 self.assertRedirects(response, expected, fetch_redirect_response=False)
         self.assertRedirects(
