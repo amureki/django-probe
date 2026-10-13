@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.4.1
+
 - Granted `contents: read` in the reusable uv workflow so checkout works in private
   repositories. This requires the callers set `permissions: contents: read`
   when upgrading.
